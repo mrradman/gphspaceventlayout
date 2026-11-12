@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GPHS PAC Event Layout</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">PAC</div>
+        <div>
+          <div class="brand-title">GPHS PAC Event Layout</div>
+          <div class="brand-sub">Glenmore Park High School · Performing Arts Centre</div>
+        </div>
+      </div>
+      <div class="event-fields">
+        <label class="f-name">Event name<input id="evName" type="text" placeholder="e.g. Year 7 Parent Evening"></label>
+        <label class="f-date">Date<input id="evDate" type="date"></label>
+        <label class="f-time">Start<input id="evStart" type="time"></label>
+        <label class="f-time">Finish<input id="evEnd" type="time"></label>
+        <label class="f-run">Run by<input id="evRunBy" type="text" placeholder="Person / faculty"></label>
+      </div>
+    </header>
+
+    <nav class="toolbar" aria-label="Toolbar">
+      <div class="tgroup">
+        <div class="menu">
+          <button id="btnNew" class="btn">New ▾</button>
+          <div class="menu-list" id="newMenu" hidden></div>
+        </div>
+        <button id="btnOpen" class="btn">Open…</button>
+        <button id="btnSave" class="btn">Save</button>
+        <button id="btnExportJson" class="btn" title="Download layout file to share">Export file</button>
+        <button id="btnImportJson" class="btn" title="Open a layout file">Import file</button>
+        <input id="fileImport" type="file" accept=".json,application/json" hidden>
+      </div>
+      <div class="tgroup">
+        <button id="btnUndo" class="btn icon" title="Undo (Ctrl+Z)">↶</button>
+        <button id="btnRedo" class="btn icon" title="Redo (Ctrl+Y)">↷</button>
+      </div>
+      <div class="tgroup">
+        <button id="btnRotL" class="btn icon" title="Rotate view 90° anticlockwise">⟲</button>
+        <span id="viewLabel" class="view-label">Stage: right</span>
+        <button id="btnRotR" class="btn icon" title="Rotate view 90° clockwise">⟳</button>
+        <button id="btnFit" class="btn" title="Fit plan to window (F)">Fit</button>
+      </div>
+      <div class="tgroup">
+        <label class="tlabel">Snap
+          <select id="snap">
+            <option value="0">Off</option><option value="50">50 mm</option><option value="100" selected>100 mm</option>
+            <option value="250">250 mm</option><option value="500">500 mm</option>
+          </select>
+        </label>
+        <button id="btnMeasure" class="btn" title="Measure distance (M)">Measure</button>
+      </div>
+      <div class="tgroup toggles">
+        <div class="seg" role="group" aria-label="Retractable seating">
+          <span class="seg-label">Retractable seating</span>
+          <button data-ret="in" class="seg-btn">In</button><button data-ret="out" class="seg-btn">Out</button>
+        </div>
+        <div class="seg" role="group" aria-label="Learning centre operable wall">
+          <span class="seg-label">LC operable wall</span>
+          <button data-wall="in" class="seg-btn" title="Two separate rooms">In</button><button data-wall="out" class="seg-btn" title="One large room">Out</button>
+        </div>
+      </div>
+      <div class="tgroup right">
+        <select id="paper" title="Paper size"><option value="A3">A3</option><option value="A4">A4</option></select>
+        <button id="btnPdf" class="btn primary">Export PDF</button>
+        <button id="btnPng" class="btn">PNG</button>
+        <button id="btnPrint" class="btn">Print</button>
+        <button id="btnHelp" class="btn icon" title="Help & shortcuts">?</button>
+      </div>
+    </nav>
+
+    <main class="workspace">
+      <aside class="panel left" id="palette" aria-label="Items">
+        <div id="paletteBody"></div>
+      </aside>
+
+      <section class="canvas-wrap" id="canvasWrap">
+        <svg id="plan" xmlns="http://www.w3.org/2000/svg" tabindex="0" aria-label="PAC floor plan">
+          <g id="viewRoot">
+            <g id="layerBase"></g>
+            <g id="layerItems"></g>
+            <g id="layerOverlay"></g>
+          </g>
+        </svg>
+        <div class="hint" id="hint" hidden></div>
+        <div class="scalebar" id="scalebar"><div class="sb-bar"></div><span class="sb-label"></span></div>
+        <div class="zoom">
+          <button class="btn icon" id="zoomIn" title="Zoom in">+</button>
+          <button class="btn icon" id="zoomOut" title="Zoom out">−</button>
+        </div>
+        <div class="toast" id="toast" role="status" aria-live="polite"></div>
+      </section>
+
+      <aside class="panel right" aria-label="Details">
+        <section class="card" id="selCard">
+          <h3 id="selTitle">Selection</h3>
+          <div id="selBody" class="muted">Click an item to select it. Shift-drag on empty space to box-select.</div>
+        </section>
+        <section class="card">
+          <h3>Inventory &amp; capacity</h3>
+          <div id="invBody"></div>
+        </section>
+        <section class="card" id="screensCard">
+          <h3>Fixed screens</h3>
+          <div id="screensBody"></div>
+        </section>
+        <section class="card">
+          <h3>Seating compliance <span id="compBadge" class="badge"></span></h3>
+          <div class="muted small">NCC 2022 NSW I4D18, I4D19, I4D20, I4D23. Planning aid only.</div>
+          <ul id="compList" class="issues"></ul>
+        </section>
+        <section class="card">
+          <h3>Notes</h3>
+          <textarea id="evNotes" rows="4" placeholder="Bump-in time, contacts, special requirements…"></textarea>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <dialog id="dlgBlock" class="dlg">
+    <form method="dialog">
+      <h2>Add a block of linked chairs</h2>
+      <div class="grid2">
+        <label>Rows<input name="rows" type="number" min="1" max="40" value="8"></label>
+        <label>Seats per row<input name="seats" type="number" min="1" max="60" value="20"></label>
+        <label>Seats between aisles<input name="section" type="number" min="0" max="60" value="10"><small>0 = no aisles in the row</small></label>
+        <label>Aisle width (mm)<input name="aisle" type="number" min="0" step="50" value="1100"></label>
+        <label>Seat spacing c/c (mm)<input name="cc" type="number" min="400" step="10" value="500"></label>
+        <label>Row spacing back-to-back (mm)<input name="b2b" type="number" min="500" step="10" value="1000"></label>
+        <label>Chairs face
+          <select name="rot"><option value="auto">Towards stage</option><option value="0">North (up)</option><option value="90">East</option><option value="180">South</option><option value="270">West</option></select>
+        </label>
+      </div>
+      <p class="small" id="blockSummary"></p>
+      <ul class="issues" id="blockWarn"></ul>
+      <div class="dlg-actions">
+        <button type="button" class="btn" id="blockCancel">Cancel</button>
+        <button value="ok" class="btn primary" id="blockOk">Add chairs</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgOpen" class="dlg">
+    <form method="dialog">
+      <h2>Saved layouts</h2>
+      <p class="small muted">Saved in this browser only. Use “Export file” to share a layout with someone else.</p>
+      <ul id="savedList" class="saved"></ul>
+      <div class="dlg-actions"><button value="cancel" class="btn">Close</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgHelp" class="dlg">
+    <form method="dialog">
+      <h2>How to use</h2>
+      <ul class="help">
+        <li><b>Add items:</b> drag from the left panel onto the plan, or click an item then click the plan (Esc to stop placing).</li>
+        <li><b>Select:</b> click; Shift-click to add; Shift-drag on empty space to box-select; Ctrl+A selects all. Clicking a linked chair selects its whole group so it moves together; Alt+click picks a single chair.</li>
+        <li><b>Screens:</b> set each fixed screen Up or Down in the right panel. A screen that's down shows as a blue bar.</li>
+        <li><b>Move:</b> drag, or arrow keys (Shift = 500 mm).</li>
+        <li><b>Rotate items:</b> R / Shift+R (15°), or the buttons in the Selection panel.</li>
+        <li><b>Duplicate:</b> Ctrl+D. <b>Delete:</b> Delete / Backspace.</li>
+        <li><b>Link chairs:</b> select 4–16 chairs and press L (or “Link”) — NSW I4D20 requires loose chairs on a level floor to be secured in groups of 4–16.</li>
+        <li><b>Pan:</b> drag empty space. <b>Zoom:</b> mouse wheel / +−. <b>Fit:</b> F.</li>
+        <li><b>Rotate the view:</b> ⟲ ⟳ in the toolbar. Exports use the current view rotation.</li>
+        <li><b>Measure:</b> M, then click two points.</li>
+        <li><b>Undo / redo:</b> Ctrl+Z / Ctrl+Y.</li>
+      </ul>
+      <p class="small muted">Plan traced from BKA drawing A111 Rev 10 — dimensions approximate. Compliance checks follow NCC 2022 NSW Part I4 (I4D17–I4D23) and are a planning aid only.</p>
+      <div class="dlg-actions"><button value="cancel" class="btn primary">Close</button></div>
+    </form>
+  </dialog>
+
+  <div id="exportHost" aria-hidden="true"></div>
+  <div id="printArea"></div>
+
+  <script src="js/building.js"></script>
+  <script src="js/floorplan.js"></script>
+  <script src="js/inventory.js"></script>
+  <script src="js/items.js"></script>
+  <script src="js/compliance.js"></script>
+  <script src="js/templates.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/app.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/svg2pdf.js@2.2.1/dist/svg2pdf.umd.min.js" defer></script>
+</body>
+</html>
