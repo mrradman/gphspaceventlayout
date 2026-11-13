@@ -16,6 +16,7 @@
   color: var(--text);
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; background: var(--bg); }
 #app { display: flex; flex-direction: column; height: 100vh; }
 button, input, select, textarea { font: inherit; color: inherit; }
