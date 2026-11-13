@@ -51,58 +51,49 @@ PAC.checkBlockParams = function (o) {
   return w;
 };
 
-function item(type, x, y, rot, extra) { const c = PAC.CATALOG[type]; return Object.assign({ id: PAC.uid(), type, x, y, rot: rot == null ? (c ? c.defRot : 0) : rot }, extra || {}); }
+/*
+ * Layout templates live in js/layouts.js (PAC.TEMPLATES_DEFAULT), managed on the editor's Templates tab.
+ * "Empty" is built in and always offered first.
+ */
+PAC.templateList = () => ((PAC.TEMPLATES_DEFAULT && PAC.TEMPLATES_DEFAULT.templates) || []).filter(t => t && t.id);
+PAC.findTemplate = id => PAC.templateList().find(t => t.id === id) || null;
 
-PAC.TEMPLATES = {
-  empty: {
-    name: 'Empty',
-    build: () => ({ settings: { retractable: 'in', operableWall: 'in' }, items: [] }),
-  },
-  assembly: {
-    name: 'Assembly / presentation',
-    build: () => {
-      const items = PAC.makeChairBlock({ rows: 10, seats: 20, section: 10, aisle: 1100, cc: 500, b2b: 1000, rot: 90, cx: 30800, cy: 10700 });
-      items.push(item('lectern', 39300, 6200, 270), item('micHandheld', 39300, 7200, 0), item('micHandheld', 39800, 7200, 0));
-      return { settings: { retractable: 'out', operableWall: 'in', screens: { stage: 'down' } }, items };
-    },
-  },
-  concert: {
-    name: 'Concert (rostra on stage)',
-    build: () => {
-      const items = PAC.makeChairBlock({ rows: 8, seats: 22, section: 11, aisle: 1100, cc: 500, b2b: 1000, rot: 90, cx: 30500, cy: 10700 });
-      // place rostra and mics relative to the Stage outline (it can be edited in editor.html)
-      const st = PAC.ROOMS.stage, my = st.y + st.h / 2, back = st.x + st.w - 1100, front = st.x + 800;
-      // centre first, so if fewer rostra are in stock the ones kept are in the middle
-      [[1800, 0], [0, -1200], [0, 1200], [1800, -2400], [1800, 2400], [0, -3600], [0, 3600]]
-        .forEach(([dx, d]) => items.push(item('rostra', back - dx, my + d, 90)));
-      [-3700, -1500, 1500, 3700].forEach(d => items.push(item('micHandheld', front, my + d, 0)));
-      items.push(item('micHeadset', front + 1000, my - 900, 0), item('micHeadset', front + 1000, my + 900, 0));
-      return { settings: { retractable: 'out', operableWall: 'in' }, items };
-    },
-  },
-  exam: {
-    name: 'Exam (110 desks)',
-    build: () => {
-      const items = [];
-      for (let c = 0; c < 11; c++) for (let r = 0; r < 10; r++) {
-        const x = 20000 + c * 1500, y = 5000 + r * 1250;
-        items.push(item('table600', x, y, 0), item('chair', x - 600, y, 90));
-      }
-      items.push(item('label', 37300, 10700, 90, { text: 'SUPERVISOR', size: 400 }));
-      return { settings: { retractable: 'in', operableWall: 'in' }, items };
-    },
-  },
-  dinner: {
-    name: 'Dinner / gala (20 tables)',
-    build: () => {
-      const items = [];
-      for (let c = 0; c < 4; c++) for (let r = 0; r < 5; r++) {
-        const x = 21500 + c * 4000, y = 4800 + r * 2900;
-        items.push(item('table1500', x, y, 0, { cloth: true }));
-        [-500, 0, 500].forEach(dx => { items.push(item('chair', x + dx, y - 760, 180), item('chair', x + dx, y + 760, 0)); });
-      }
-      items.push(item('lectern', 39300, 6200, 270), item('micHandheld', 39300, 7200, 0));
-      return { settings: { retractable: 'in', operableWall: 'in' }, items };
-    },
-  },
+/* A template's contents ready to place: fresh ids, linked groups kept together, unknown items dropped, capped to stock. */
+PAC.instantiateTemplate = function (t) {
+  const used = {}, links = {}, items = [];
+  for (const i of (t && t.items) || []) {
+    const c = PAC.CATALOG[i.type]; if (!c) continue;
+    used[i.type] = (used[i.type] || 0) + 1;
+    if (c.max != null && used[i.type] > c.max) continue;
+    const it = Object.assign({}, i, { id: PAC.uid() });
+    if (i.link) it.link = links[i.link] = links[i.link] || PAC.uid();
+    items.push(it);
+  }
+  const st = (t && t.settings) || {};
+  return { settings: { retractable: st.retractable === 'out' ? 'out' : 'in', operableWall: st.operableWall === 'out' ? 'out' : 'in', screens: Object.assign({}, st.screens) }, items };
 };
+
+/* Text of js/layouts.js (one item per line keeps the file readable and diff-friendly). */
+PAC.layoutsFileText = function (data) {
+  const tpl = t => {
+    const head = { id: t.id, name: t.name, settings: t.settings || {} };
+    const items = (t.items || []).map(i => '        ' + JSON.stringify(i)).join(',\n');
+    return `    {\n      "id": ${JSON.stringify(head.id)},\n      "name": ${JSON.stringify(head.name)},\n      "settings": ${JSON.stringify(head.settings)},\n      "items": [${items ? '\n' + items + '\n      ' : ''}]\n    }`;
+  };
+  return `/*
+ * GPHS PAC — layout templates shown in the layout tool's New menu ("Empty" is always there too).
+ * Edit them in editor.html (Templates tab); it saves straight into this file.
+ * Each template: id, name, settings { retractable in|out, operableWall in|out, screens { <screenId>: "down" } }, items [...].
+ */
+window.PAC = window.PAC || {};
+
+PAC.TEMPLATES_DEFAULT = {
+  "version": 1,
+  "templates": [
+${(data.templates || []).map(tpl).join(',\n')}
+  ]
+};
+`;
+};
+/* Parse the text of js/layouts.js back into data. */
+PAC.parseLayoutsFile = function (text) { const P = {}; new Function('window', 'PAC', text)({}, P); return P.TEMPLATES_DEFAULT || { version: 1, templates: [] }; };

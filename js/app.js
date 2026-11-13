@@ -14,6 +14,8 @@
     items: [],
   };
   let sel = new Set();
+  const TPL = { active: false, id: null, name: '', saved: '' }; // template-editing mode (opened from editor.html)
+  function autosave() { if (!TPL.active) PAC.store.saveCurrent(serialize()); }
   let analysis = null;
   const undoStack = [], redoStack = [];
   let view = { x: E.x, y: E.y, w: E.w, h: E.h };
@@ -33,7 +35,8 @@
     analysis = PAC.checkLayout(state);
     render();
     updatePanels();
-    if (!opts || !opts.noSave) PAC.store.saveCurrent(serialize());
+    if (!opts || !opts.noSave) autosave();
+    if (TPL.active) updateTplBar();
   }
 
   const byId = id => state.items.find(i => i.id === id);
@@ -88,7 +91,7 @@
     state.settings.viewRot = (((state.settings.viewRot + d) % 360) + 360) % 360;
     fit(); void c;
     updateViewLabel(); render();
-    PAC.store.saveCurrent(serialize());
+    autosave();
   }
   function updateViewLabel() {
     const side = { 0: 'right', 90: 'bottom', 180: 'left', 270: 'top' }[state.settings.viewRot];
@@ -461,7 +464,7 @@
     else if (ctrl && (k === 'y' || k === 'Y')) { e.preventDefault(); redo(); }
     else if (ctrl && (k === 'd' || k === 'D')) { e.preventDefault(); duplicateSelection(); }
     else if (ctrl && (k === 'a' || k === 'A')) { e.preventDefault(); sel = new Set(state.items.map(i => i.id)); renderOverlay(); updateSelPanel(); }
-    else if (ctrl && (k === 's' || k === 'S')) { e.preventDefault(); saveLayout(); }
+    else if (ctrl && (k === 's' || k === 'S')) { e.preventDefault(); if (TPL.active) saveTemplate(); else saveLayout(); }
     else if (ctrl) return;
     else if (k === 'Delete' || k === 'Backspace') { e.preventDefault(); deleteSelection(); }
     else if (k === 'Escape') { if (mode !== 'select') setMode('select'); else { sel.clear(); renderOverlay(); updateSelPanel(); } }
@@ -532,21 +535,18 @@
   }
   function buildNewMenu() {
     const m = $('newMenu');
-    m.innerHTML = Object.keys(PAC.TEMPLATES).map(k => `<button data-tpl="${k}">${PAC.TEMPLATES[k].name}</button>`).join('');
+    const list = [{ id: '', name: 'Empty' }].concat(PAC.templateList());
+    m.innerHTML = list.map(t => `<button data-tpl="${PAC.esc(t.id)}">${PAC.esc(t.name)}</button>`).join('');
     m.querySelectorAll('button').forEach(b => b.onclick = () => {
       m.hidden = true;
       if (state.items.length && !confirm('Replace the current layout? (Event details are kept. You can undo.)')) return;
-      const t = PAC.TEMPLATES[b.dataset.tpl].build();
+      const src = b.dataset.tpl ? PAC.findTemplate(b.dataset.tpl) : null;
+      const t = PAC.instantiateTemplate(src || { items: [] });
       snapshot();
-      const used = {};
-      state.items = t.items.filter(i => {
-        const c = PAC.CATALOG[i.type]; if (!c) return false;
-        used[i.type] = (used[i.type] || 0) + 1;
-        return c.max == null || used[i.type] <= c.max;
-      });
-      Object.assign(state.settings, { retractable: t.settings.retractable, operableWall: t.settings.operableWall, screens: Object.assign({}, t.settings.screens) }); sel.clear();
+      state.items = t.items;
+      Object.assign(state.settings, t.settings); sel.clear();
       changed(); fit();
-      toast(`Started from “${PAC.TEMPLATES[b.dataset.tpl].name}”.`);
+      toast(`Started from “${src ? src.name : 'Empty'}”.`);
     });
     $('btnNew').onclick = e => { e.stopPropagation(); m.hidden = !m.hidden; };
     document.addEventListener('click', () => { m.hidden = true; });
@@ -575,7 +575,7 @@
   /* ---------------- wiring ---------------- */
   function bind() {
     const metaMap = { evName: 'name', evDate: 'date', evStart: 'start', evEnd: 'end', evRunBy: 'runBy', evNotes: 'notes' };
-    for (const id in metaMap) $(id).addEventListener('input', () => { state.meta[metaMap[id]] = $(id).value; document.title = (state.meta.name ? state.meta.name + ' — ' : '') + 'GPHS PAC Event Layout'; PAC.store.saveCurrent(serialize()); });
+    for (const id in metaMap) $(id).addEventListener('input', () => { state.meta[metaMap[id]] = $(id).value; document.title = (state.meta.name ? state.meta.name + ' — ' : '') + 'GPHS PAC Event Layout'; autosave(); });
     $('btnUndo').onclick = undo; $('btnRedo').onclick = redo;
     $('btnRotL').onclick = () => rotateView(-90); $('btnRotR').onclick = () => rotateView(90);
     $('btnFit').onclick = fit;
@@ -612,7 +612,55 @@
   const saved = PAC.store.loadCurrent();
   let startData = null;
   try { if (saved && saved.app === 'gphs-pac-layout') startData = saved; } catch (e) { startData = null; }
-  loadData(startData || Object.assign({ meta: {} }, PAC.TEMPLATES.empty.build()));
+  loadData(startData || Object.assign({ meta: {} }, PAC.instantiateTemplate(null)));
+
+  /* ---------------- template-editing mode: index.html?template=<id>, opened from editor.html ---------------- */
+  function updateTplBar() {
+    const dirty = snapKey() !== TPL.saved;
+    $('tplBarStatus').textContent = dirty ? 'Unsaved changes' : (TPL.when ? `Saved at ${TPL.when}` : 'No changes yet');
+    $('tplBarStatus').className = 'tpl-status ' + (dirty ? 'dirty' : 'clean');
+  }
+  async function saveTemplate() {
+    const b = $('tplSave'); b.disabled = true;
+    try {
+      const text = await (await fetch('js/layouts.js', { cache: 'no-store' })).text();
+      const data = PAC.parseLayoutsFile(text);
+      const t = data.templates.find(x => x.id === TPL.id);
+      if (!t) throw new Error('this template was deleted in the editor');
+      t.settings = { retractable: state.settings.retractable, operableWall: state.settings.operableWall, screens: Object.assign({}, state.settings.screens) };
+      t.items = state.items.map(i => Object.assign({}, i, { x: Math.round(i.x), y: Math.round(i.y) }));
+      const r = await fetch('api/save/layouts', { method: 'POST', headers: { 'Content-Type': 'text/javascript; charset=utf-8' }, body: PAC.layoutsFileText(data) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status + ' — restart Edit Building.cmd'));
+      TPL.saved = snapKey(); TPL.when = new Date().toLocaleTimeString('en-AU');
+      updateTplBar(); toast(`Saved template “${TPL.name}”.`);
+    } catch (e) { toast('Could not save the template: ' + e.message); }
+    finally { b.disabled = false; }
+  }
+  (async function startTemplateMode() {
+    const id = new URLSearchParams(location.search).get('template');
+    if (!id) return;
+    let ok = false;
+    try { ok = !!(await (await fetch('api/ping', { cache: 'no-store' })).json()).ok; } catch (e) { ok = false; }
+    if (!ok) { toast('Templates can only be edited from the building editor (Edit Building.cmd).'); return; }
+    const t = PAC.findTemplate(id);
+    if (!t) { toast('That template no longer exists.'); return; }
+    Object.assign(TPL, { active: true, id, name: t.name });
+    document.body.classList.add('tpl-mode');
+    loadData({ meta: { name: 'Template: ' + t.name }, settings: t.settings, items: t.items });
+    TPL.saved = snapKey();
+    $('tplBarText').innerHTML = `Editing template <b>${PAC.esc(t.name)}</b> — arrange it as people should see it when they choose it from New.`;
+    $('tplBar').hidden = false;
+    updateTplBar();
+    document.title = 'Template: ' + t.name + ' — GPHS PAC';
+    $('tplSave').onclick = saveTemplate;
+    $('tplClose').onclick = () => {
+      if (snapKey() !== TPL.saved && !confirm('Close without saving your changes to this template?')) return;
+      TPL.saved = snapKey(); window.close();
+      setTimeout(() => { location.href = 'editor.html'; }, 200); // if the browser won't close a tab it didn't open
+    };
+    window.addEventListener('beforeunload', e => { if (TPL.active && snapKey() !== TPL.saved) { e.preventDefault(); e.returnValue = ''; } });
+  })();
   // expose for debugging
   window.PAC_APP = {
     state, get analysis() { return analysis; }, fit, render, changed, toast, updateSelPanel,

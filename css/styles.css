@@ -226,3 +226,16 @@ label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--t
 .pub-h { font-size: 14px; margin: 14px 0 4px; color: var(--navy); }
 #dlgPublish { width: min(680px, 94vw); }
 #dlgPublish code { word-break: break-all; }
+
+/* ---------- template-editing mode (layout tool opened from the editor) ---------- */
+.tpl-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 14px; background: #fef3c7; border-bottom: 1px solid #f59e0b; color: #78350f; font-size: 13.5px; }
+.tpl-bar #tplBarText { flex: 1; min-width: 240px; }
+.tpl-status { font-size: 12px; padding: 2px 8px; border-radius: 10px; }
+.tpl-status.dirty { background: #fff7ed; color: #9a3412; border: 1px solid #fdba74; }
+.tpl-status.clean { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+.tpl-mode .event-fields, .tpl-mode #btnOpen, .tpl-mode #btnSave { display: none; }
+
+/* ---------- editor: templates tab ---------- */
+.ed-tabs .ed-tab { font-size: 12px; padding: 7px 2px; }
+.tpl-preview { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 4px; margin-bottom: 8px; }
+.tpl-preview svg { display: block; width: 100%; height: auto; }
